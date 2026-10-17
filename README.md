@@ -1,11 +1,68 @@
-# Qwen Image Editor (work in progress)
+# Qwen Image Editor
 
-Local image generation and editing with Qwen-Image-2.1-Turbo, without ComfyUI: a browser editor, and an MCP server
-with an in-chat widget for Claude Desktop, Goose and other chat apps.
+**Point-and-say image editing with Qwen-Image-2.1-Turbo, running on your own computer.** Describe an image to create
+it, or draw around part of a picture and say what should change. Use it in the browser, or from Claude Desktop, Goose
+and ChatGPT, where the AI writes the prompts and the images are made locally.
 
-Model weights are not included. Qwen-Image-2.1 is under the non-commercial Qwen Research License; download it yourself.
+[![Download](https://img.shields.io/github/v/release/loopforge0/qwen-image-editor?label=download&color=2ea44f)](https://github.com/loopforge0/qwen-image-editor/releases/latest)
+![Windows](https://img.shields.io/badge/Windows-NVIDIA%2012%20GB%2B-0078D4)
+![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-555555)
+[![License](https://img.shields.io/badge/code-Apache--2.0-blue)](LICENSE)
+[![Model license](https://img.shields.io/badge/model-research%20use%20only-orange)](#the-model-research-use-only)
 
-## Try it (Windows/Linux, NVIDIA 12 GB+)
+![Draw around the cup, ask for a glass of red wine, compare the result side by side](docs/side-by-side.jpg)
+
+> [!IMPORTANT]
+> **The model is not included, and it is for research and non-commercial use only.**
+> This project is the editor: it contains no model weights. Qwen-Image-2.1 is made by Qwen (Alibaba Cloud) and
+> released under the [Qwen Research License Agreement](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE), which
+> allows research and other non-commercial use only. The editor's setup shows that license and downloads the model
+> from Hugging Face only after you accept it. Using the model, through this editor or otherwise, is governed by that
+> license. This project is not affiliated with or endorsed by Qwen or Alibaba Cloud.
+
+## Download
+
+Get the installer from the [latest release](https://github.com/loopforge0/qwen-image-editor/releases/latest):
+
+| | Installer | Needs |
+|---|---|---|
+| **Windows** | `QwenImageEditor-Setup-<version>.exe` | NVIDIA graphics card with 12 GB+ memory, driver 580 or newer, 32 GB RAM recommended, about 25 GB free disk |
+| **macOS** | `QwenImageEditor-<version>.dmg` | Apple Silicon Mac, macOS 14 or newer |
+
+On first start the editor walks you through a one-time setup: it checks your computer, shows the model's license,
+and downloads the model (about 17 GB). Already have the models in ComfyUI? It can use those instead. The installers
+aren't code-signed yet, so Windows SmartScreen and macOS ask before the first start.
+
+## What it does
+
+<table>
+<tr>
+<td width="50%"><img src="docs/generate.jpg" alt="A new image made from a description"></td>
+<td width="50%"><img src="docs/edit-marks.jpg" alt="Drawing a circle around the cup to mark what should change"></td>
+</tr>
+<tr>
+<td><b>Create</b> an image from a description, in about 20 seconds on an RTX 3060.</td>
+<td><b>Edit</b> by drawing around what should change and saying what to do: "replace the cup in the red circle
+with a glass of red wine".</td>
+</tr>
+</table>
+
+- **Compare** each result with the original: a slider, side by side, or a map of what changed.
+- **Combine** several images: "put the person from image 2 on the sofa in image 1".
+- **Chat apps:** connect Claude Desktop, Goose or ChatGPT, and ask for images in the chat. They appear in a widget
+  where you can edit them further.
+- **Local:** the images are made on your computer. In the browser editor nothing leaves it; with a chat app, that
+  app's AI sees the prompts and the images you share in the chat.
+
+## The model: research use only
+
+Qwen-Image-2.1-Turbo is not part of this project and isn't in the installers. It's released by Qwen under the
+[Qwen Research License Agreement](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE): research and other
+non-commercial use only. Read the license before downloading the model; the editor's setup shows it and asks you to
+accept it first. This project's license (Apache-2.0, see [LICENSE](LICENSE)) covers the editor's code only, not
+the model.
+
+## Run from source (Windows/Linux, NVIDIA 12 GB+)
 
 You need git, an NVIDIA driver 580 or newer, and [uv](https://docs.astral.sh/uv/):
 
@@ -83,7 +140,8 @@ composition), with any text to show in double quotes. For an edit, lead with the
 Drop or paste an image, click it to draw marks on it (each mark gets its own colour), describe the change
 ("replace the lamp in the red circle"), and generate. Several images can be combined ("put the person from <image2>
 on the sofa in <image1>"; "image 2" works too). Results can be compared with a slider, side by side, or as a map of what changed, and any
-result can be edited further. Everything stays on your machine; history is kept in `outputs/app/`.
+result can be edited further. Everything stays on your machine; the history is kept in the `history` folder of the
+editor's data folder (see above).
 
 The page is plain HTML, CSS and JavaScript in `app/static/` with no build step; the server is Python's standard
 library on top of the engine.
