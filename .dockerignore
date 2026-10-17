@@ -1,0 +1,8 @@
+# What a fresh `git clone` wouldn't have (keep in step with .gitignore)
+.git/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+outputs/
+.playwright-mcp/

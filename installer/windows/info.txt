@@ -1,0 +1,12 @@
+Qwen Image Editor
+
+Edit and create images with Qwen-Image-2.1-Turbo, entirely on this PC.
+
+What happens next:
+- This installer adds the editor and a Start menu shortcut (about 50 MB).
+- At the end it installs the editor's components (about 2 GB to download, a few minutes).
+- The editor then runs from the tray (by the clock) and opens in your browser and walks you through a one-time setup: it checks your PC, asks you to accept the model's license, and downloads the model (about 17 GB). If you already have the models in ComfyUI, it can use those instead.
+
+Requirements: an NVIDIA graphics card with 12 GB of memory or more, an NVIDIA driver from 2025 or later (version 580+), 32 GB of RAM recommended, and about 25 GB of free disk.
+
+The model, Qwen-Image-2.1, is released under the Qwen Research License Agreement: research and other non-commercial use only. It is not included in this installer.

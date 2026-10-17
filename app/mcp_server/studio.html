@@ -1,0 +1,658 @@
+<!doctype html>
+<!-- The "studio" widget (MCP Apps) for chat apps: results with compare views, and marking up images to edit them.
+     The server inlines the MCP Apps helper library where the comment below is. Images come in as data through the
+     server's app-only tools (studio_*), never from localhost. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>
+:root {
+  --bg: var(--color-background-primary, light-dark(#ffffff, #1b1b1e));
+  --bg2: var(--color-background-secondary, light-dark(#f4f4f5, #232327));
+  --stage: light-dark(#ececee, #111113);
+  --fg: var(--color-text-primary, light-dark(#18181b, #ececf0));
+  --fg2: var(--color-text-secondary, light-dark(#62626b, #a0a0aa));
+  --line: var(--color-border-primary, light-dark(#dcdce0, #34343a));
+  --accent: light-dark(#2563eb, #5b8cff);
+  --danger: light-dark(#c62828, #ff6b6b);
+  --radius: var(--border-radius-md, 10px);
+  font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+  font-size: 13px; color: var(--fg); background: transparent;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, select { font: inherit; color: inherit; }
+#root { display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+html.full #root { height: 100vh; padding: 12px; }
+
+.bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 30px; }
+.bar .label { color: var(--fg2); margin-right: 4px; }
+.bar .grow { flex: 1; }
+.seg { display: inline-flex; background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; color: var(--fg2); }
+.seg button.on { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.seg button:disabled { opacity: .4; cursor: default; }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 5px 11px; cursor: pointer; }
+.btn:hover:not(:disabled) { background: var(--bg2); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+select { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 4px 8px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 3px 1px 8px; background: var(--bg); }
+.chip button { border: 0; background: none; cursor: pointer; padding: 2px 4px; color: var(--fg2); }
+.chip .name { color: var(--fg); padding-left: 0; }
+.swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+.stage { position: relative; height: 440px; background: var(--stage); border-radius: var(--radius); overflow: hidden;
+  display: flex; align-items: center; justify-content: center; }
+html.full .stage { height: auto; flex: 1; min-height: 200px; }
+.compact { display: flex; align-items: center; gap: 12px; }
+.compact img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; flex: none; }
+.compact .btn { margin-top: 6px; }
+.stage.small { height: auto; min-height: 0; padding: 14px 16px; justify-content: flex-start; color: var(--fg2); line-height: 1.4; }
+.frame { position: relative; line-height: 0; }
+.frame img, .frame canvas, .frame svg { display: block; width: 100%; height: 100%; }
+/* Behind transparent images: a checkerboard, so a see-through background reads as one. */
+.frame img, .thumb img { background: repeating-conic-gradient(#d2d2d2 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
+.frame svg { position: absolute; inset: 0; }
+.frame.drawing svg { cursor: crosshair; touch-action: none; }
+.tag { position: absolute; left: 8px; bottom: 8px; line-height: 1.4; font-size: 11px; padding: 2px 7px; border-radius: 6px; background: rgba(0,0,0,.6); color: #eee; pointer-events: none; }
+.tag.right { left: auto; right: 8px; }
+.compare { position: relative; width: 100%; height: 100%; cursor: ew-resize; user-select: none; }
+.compare img { pointer-events: none; }
+.compare .over { position: absolute; inset: 0; object-fit: contain; background: var(--stage); }
+.compare .handle { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.3); pointer-events: none; }
+.compare .handle::after { content: ""; position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.side { display: flex; gap: 10px; width: 100%; height: 100%; padding: 10px; }
+.side .cell { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; }
+.drop { text-align: center; color: var(--fg2); padding: 24px; border: 1.5px dashed var(--line); border-radius: var(--radius); cursor: pointer; }
+.drop strong { display: block; color: var(--fg); font-size: 15px; margin-bottom: 4px; }
+.stage.dragging { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.working { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: color-mix(in srgb, var(--stage) 72%, transparent); color: var(--fg); text-align: center; padding: 20px; }
+.working .text { max-width: 80%; color: var(--fg2); }
+.pbar { width: 240px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.pbar div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.thumb { position: relative; width: 52px; height: 52px; border-radius: 8px; overflow: hidden; border: 2px solid transparent; cursor: pointer; background: var(--bg2); }
+.thumb.on { border-color: var(--accent); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .num { position: absolute; left: 3px; top: 3px; font-size: 10px; line-height: 1; padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,.65); color: #fff; }
+.thumb .x { position: absolute; right: 2px; top: 2px; border: 0; width: 16px; height: 16px; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; font-size: 11px; line-height: 16px; padding: 0; cursor: pointer; display: none; }
+.thumb:hover .x { display: block; }
+.thumb .dots { position: absolute; right: 3px; bottom: 3px; display: flex; gap: 2px; }
+.thumb .dots span { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(0,0,0,.4); }
+.add { width: 52px; height: 52px; border-radius: 8px; border: 1.5px dashed var(--line); background: none; cursor: pointer; color: var(--fg2); font-size: 20px; }
+.msg { color: var(--danger); }
+.note { color: var(--fg2); font-size: 12px; }
+.history { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.history .thumb { flex: none; width: 44px; height: 44px; }
+.history .label { align-self: center; color: var(--fg2); font-size: 12px; margin-right: 2px; flex: none; }
+[hidden] { display: none !important; }
+</style>
+<!--EXT-APPS-->
+</head>
+<body>
+<div id="root">
+  <div class="bar" id="bar"></div>
+  <div class="stage" id="stage"></div>
+  <div class="thumbs" id="thumbs" hidden></div>
+  <div class="msg" id="msg" hidden></div>
+  <div class="note" id="note" hidden></div>
+  <div class="history" id="history"></div>
+</div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+<script>
+const { App, applyHostStyleVariables, applyDocumentTheme, applyHostFonts } = globalThis.ExtApps;
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const MAX_IMAGES = 10, CHUNK = 100000, VIEW_PX = 1600;
+// The same colours as the browser editor; the server draws marks with them too.
+const MARK_COLORS = [
+  { name: "red", css: "#ff3b47" }, { name: "green", css: "#22d861" }, { name: "blue", css: "#3b82f6" },
+  { name: "magenta", css: "#f23ccd" }, { name: "yellow", css: "#ffd028" }, { name: "cyan", css: "#22d3ee" },
+];
+
+const S = {
+  mode: "waiting",   // waiting (for the tool call this widget belongs to) | canvas | result
+  waitText: "",      // shown while waiting: why there's nothing to show
+  compact: false,    // a result that an open panel shows: just a small card here
+  images: [],        // the images to edit: [{ id, w, h, marks: [{ color, points: [[x, y], ...], closed }] }]
+  sel: 0,            // the image shown on the canvas
+  result: null,      // { id, prompt, width, height, seed, total_s, sources: [{ id, w, h, marks }] }
+  view: "result",    // result | compare | side | diff
+  against: 0,        // which source the compare views use
+  working: null,     // { text } while a generation runs
+  history: [],
+};
+
+const app = new App({ name: "Qwen Image Editor", version: "0.1.0" }, { availableDisplayModes: ["inline", "fullscreen"] });
+
+// ---------------------------------------------------------------- server
+
+async function call(name, args = {}) {
+  const r = await app.callServerTool({ name, arguments: args });
+  const text = (r.content || []).map(c => c.text).filter(Boolean).join(" ");
+  if (r.isError) throw new Error(text || "Something went wrong.");
+  if (r.structuredContent) return r.structuredContent;
+  try { return JSON.parse(text); } catch { throw new Error(`Unexpected answer from ${name}.`); }  // apps that pass on only the text
+}
+// Chat apps don't show a widget's console: send problems to the server's log (mcp.log in the editor's data folder).
+const report = msg => app.callServerTool({ name: "studio_log", arguments: { message: String(msg) } }).catch(() => {});
+addEventListener("error", e => report(`error: ${e.message} at ${e.lineno}:${e.colno}`));
+addEventListener("unhandledrejection", e => report(`unhandled: ${e.reason?.stack || e.reason}`));
+
+// Images arrive as base64 in parts (apps cut long tool results); kept as data: URLs.
+const urls = new Map();
+function imageUrl(id, maxPx = VIEW_PX) {
+  const key = id + "@" + maxPx;
+  if (!urls.has(key)) {
+    urls.set(key, (async () => {
+      const first = await call("studio_image", { id, max_px: maxPx, chunk: 0 });
+      const parts = [first.data];
+      for (let i = 1; i < first.chunks; i++) parts.push((await call("studio_image", { id, max_px: maxPx, chunk: i })).data);
+      return `data:${first.mime};base64,${parts.join("")}`;
+    })());
+    urls.get(key).catch(() => urls.delete(key));
+  }
+  return urls.get(key);
+}
+const loadImage = src => new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = err; i.src = src; });
+
+async function addFiles(files) {
+  hideMsg();
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    if (S.images.length >= MAX_IMAGES) { showMsg(`At most ${MAX_IMAGES} images per edit.`); break; }
+    try {
+      const src = URL.createObjectURL(f), img = await loadImage(src);
+      URL.revokeObjectURL(src);
+      // About the size the model works at anyway; keeps the upload to a few parts.
+      const s = Math.min(1, VIEW_PX / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      const url = c.toDataURL("image/jpeg", 0.92), b64 = url.split(",")[1];
+      showNote(`Adding ${esc(f.name || "image")}…`);
+      let token = "", res = {};
+      for (let i = 0; i < b64.length; i += CHUNK) {
+        res = await call("studio_upload", { data: b64.slice(i, i + CHUNK), token, last: i + CHUNK >= b64.length });
+        token = res.token || token;
+      }
+      urls.set(res.id + "@" + VIEW_PX, Promise.resolve(url));
+      S.images.push({ id: res.id, w: res.w, h: res.h, marks: [] });
+      S.sel = S.images.length - 1;
+    } catch (e) { showMsg(e.message); }
+  }
+  hideNote();
+  S.mode = "canvas";
+  render();
+  syncDraft();
+}
+
+// ---------------------------------------------------------------- layout
+
+function fitFrames() {
+  $$("#stage .frame").forEach(f => {
+    const box = f.parentElement.getBoundingClientRect();
+    const w = +f.dataset.w, h = +f.dataset.h;
+    if (!w || !h || !box.width) return;
+    const scale = Math.min(box.width / w, box.height / h);
+    f.style.width = Math.floor(w * scale) + "px";
+    f.style.height = Math.floor(h * scale) + "px";
+  });
+}
+new ResizeObserver(fitFrames).observe($("#stage"));
+const frame = (inner, w, h, cls = "") => `<div class="frame ${cls}" data-w="${w}" data-h="${h}">${inner}</div>`;
+
+let renderSeq = 0;
+async function renderNow() {
+  const seq = ++renderSeq;
+  renderBar();
+  renderThumbs();
+  const stage = $("#stage");
+  let html = "";
+  if (S.mode === "result" && S.result && S.compact && !S.working) {
+    html = `<div class="compact"><img src="${await imageUrl(S.result.id, 160)}" alt=""><div>Shown in the editor panel.<br>` +
+      `<button class="btn" id="expand">Show here</button></div></div>`;
+  }
+  else if (S.mode === "result" && S.result) html = await resultHtml();
+  else if (S.mode === "canvas" && S.images.length) html = await canvasHtml();
+  else if (S.mode === "waiting" && !S.working) html = esc(S.waitText);
+  else if (S.mode === "canvas") html = `<div class="drop" id="drop"><strong>Drop or paste images here</strong>or click to choose (up to ${MAX_IMAGES}).
+    Then draw around what should change, and tell the AI in the chat.</div>`;
+  if (S.working) {
+    const last = S.images[S.images.length - 1];
+    if (!html && last) html = frame(`<img src="${await imageUrl(last.id)}" alt="">`, last.w, last.h);
+    html += `<div class="working"><div>Generating…</div><div class="pbar"><div id="pfill"></div></div>
+      <div class="text" id="ptext">${esc(S.working.text)}</div></div>`;
+  }
+  if (seq !== renderSeq) return;  // a newer render took over while images loaded
+  stage.classList.toggle("small", (S.mode === "waiting" || (S.mode === "result" && S.compact)) && !S.working);
+  stage.innerHTML = html;
+  fitFrames();
+  bindStage();
+}
+// Rendering waits for images from the server; a failure shows up as a message, not a blank stage.
+function render() {
+  return renderNow().catch(e => { showMsg(e.message); report(`render: ${e.stack || e}`); });
+}
+
+function renderBar() {
+  const bar = $("#bar");
+  const ctx = app.getHostContext() || {};
+  const canFull = (ctx.availableDisplayModes || []).includes("fullscreen");
+  const full = ctx.displayMode === "fullscreen";
+  const fullBtn = canFull ? `<button class="btn" id="full" title="${full ? "Back to the chat" : "Full screen"}">${full ? "Exit full screen" : "Full screen"}</button>` : "";
+  if (S.mode === "result" && S.result && S.compact && !S.working) {
+    bar.innerHTML = `<span class="label">Qwen Image Editor</span><span class="grow"></span>` + fullBtn;
+  } else if (S.mode === "result" && S.result && !S.working) {
+    const src = S.result.sources || [];
+    const views = [["result", "Result"], ["compare", "Compare"], ["side", "Side by side"], ["diff", "Changes"]];
+    bar.innerHTML = `<div class="seg">${views.map(([k, l]) => `<button data-view="${k}" class="${S.view === k ? "on" : ""}" ${k !== "result" && !src.length ? "disabled" : ""}>${l}</button>`).join("")}</div>` +
+      (src.length > 1 && S.view !== "result" ? `<select id="against">${src.map((s, i) => `<option value="${i}" ${i === S.against ? "selected" : ""}>vs Image ${i + 1}</option>`).join("")}</select>` : "") +
+      `<span class="grow"></span><button class="btn" id="editThis" title="Mark up this result and edit it">Edit this</button>` +
+      `<button class="btn" id="newEdit" title="Start over with new images">New</button>` +
+      `<button class="btn" id="download">Download</button>` + fullBtn;
+    $$(".seg button", bar).forEach(b => b.onclick = () => { S.view = b.dataset.view; render(); });
+    if ($("#against")) $("#against").onchange = e => { S.against = +e.target.value; render(); };
+    $("#editThis").onclick = () => {
+      const r = S.result;
+      S.images = [{ id: r.id, w: r.width, h: r.height, marks: [] }];
+      S.sel = 0; S.mode = "canvas"; render(); syncDraft();
+    };
+    $("#newEdit").onclick = () => { S.images = []; S.mode = "canvas"; render(); syncDraft(); };
+    $("#download").onclick = download;
+  } else if (S.mode === "canvas" && S.images.length && !S.working) {
+    const img = S.images[S.sel];
+    const chips = img.marks.map((m, k) => `<span class="chip"><span class="swatch" style="background:${m.color.css}"></span>` +
+      `<span class="name">${m.color.name}</span>` +
+      `<button class="del" data-k="${k}" title="Delete this mark">✕</button></span>`).join("");
+    bar.innerHTML = `<span class="label">${S.images.length > 1 ? `Image ${S.sel + 1} · ` : ""}${img.marks.length ? "now say in the chat what to change" : "draw around what should change"}</span>` +
+      chips + (img.marks.length ? `<button class="btn" id="undo">Undo</button>` : "") +
+      `<span class="grow"></span>` + (S.result ? `<button class="btn" id="back">Back to result</button>` : "") + fullBtn;
+    $$(".chip .del", bar).forEach(b => b.onclick = () => { img.marks.splice(+b.dataset.k, 1); render(); syncDraft(); });
+    if ($("#undo")) $("#undo").onclick = () => { img.marks.pop(); render(); syncDraft(); };
+    if ($("#back")) $("#back").onclick = () => { S.mode = "result"; render(); syncDraft(); };
+  } else {
+    bar.innerHTML = `<span class="label">${S.working ? "Working…" : "Qwen Image Editor"}</span><span class="grow"></span>` + fullBtn;
+  }
+  if ($("#full")) $("#full").onclick = async () => {
+    try { await app.requestDisplayMode({ mode: full ? "inline" : "fullscreen" }); } catch {}
+  };
+}
+
+function renderThumbs() {
+  const box = $("#thumbs"), n = S.images.length;
+  box.hidden = !(S.mode === "canvas" && n && !S.working);
+  if (box.hidden) return;
+  box.innerHTML = "";
+  S.images.forEach((img, i) => {
+    const el = document.createElement("div");
+    el.className = "thumb" + (i === S.sel ? " on" : "");
+    el.title = `Image ${i + 1}`;
+    el.innerHTML = `<img alt=""><span class="num">${i + 1}</span><button class="x" title="Remove">✕</button>` +
+      (img.marks.length ? `<span class="dots">${img.marks.map(m => `<span style="background:${m.color.css}"></span>`).join("")}</span>` : "");
+    imageUrl(img.id).then(u => { $("img", el).src = u; }).catch(() => {});
+    el.onclick = () => { S.sel = i; render(); };
+    $(".x", el).onclick = e => { e.stopPropagation(); S.images.splice(i, 1); S.sel = Math.max(0, Math.min(S.sel, S.images.length - 1)); render(); syncDraft(); };
+    box.appendChild(el);
+  });
+  if (n < MAX_IMAGES) {
+    const add = document.createElement("button");
+    add.className = "add"; add.title = "Add images"; add.textContent = "+";
+    add.onclick = () => $("#file").click();
+    box.appendChild(add);
+  }
+}
+
+// ---------------------------------------------------------------- canvas and marks
+
+const strokeWidth = img => Math.max(3, Math.round(Math.max(img.w, img.h) / 190));
+const pathOf = m => m.points.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ") + (m.closed ? " Z" : "");
+function nextColor() {
+  const used = new Set(S.images.flatMap(i => i.marks.map(m => m.color.name)));
+  const count = S.images.reduce((n, i) => n + i.marks.length, 0);
+  return MARK_COLORS.find(c => !used.has(c.name)) || MARK_COLORS[count % MARK_COLORS.length];
+}
+
+async function canvasHtml() {
+  const img = S.images[S.sel], sw = strokeWidth(img);
+  return frame(`<img src="${await imageUrl(img.id)}" alt=""><svg viewBox="0 0 ${img.w} ${img.h}" preserveAspectRatio="none">` +
+    img.marks.map(m => `<path d="${pathOf(m)}" fill="none" stroke="${m.color.css}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>`).join("") +
+    `</svg>${S.images.length > 1 ? `<span class="tag">Image ${S.sel + 1}</span>` : ""}`, img.w, img.h, "drawing");
+}
+
+function bindDrawing(svg, img) {
+  let live = null;
+  const toXY = e => { const b = svg.getBoundingClientRect(); return [(e.clientX - b.left) * img.w / b.width, (e.clientY - b.top) * img.h / b.height]; };
+  svg.onpointerdown = e => {
+    if (e.button !== 0) return;
+    svg.setPointerCapture(e.pointerId);
+    live = { color: nextColor(), points: [toXY(e)], closed: false };
+    live.el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    Object.entries({ fill: "none", stroke: live.color.css, "stroke-width": strokeWidth(img), "stroke-linejoin": "round", "stroke-linecap": "round" })
+      .forEach(([k, v]) => live.el.setAttribute(k, v));
+    svg.appendChild(live.el);
+  };
+  svg.onpointermove = e => {
+    if (!live) return;
+    const [x, y] = toXY(e), [px, py] = live.points[live.points.length - 1];
+    if (Math.hypot(x - px, y - py) < Math.max(img.w, img.h) / 400) return;
+    live.points.push([x, y]);
+    live.el.setAttribute("d", pathOf(live));
+  };
+  svg.onpointerup = svg.onpointercancel = () => {
+    if (!live) return;
+    const m = live; live = null;
+    m.el.remove(); delete m.el;
+    const xs = m.points.map(p => p[0]), ys = m.points.map(p => p[1]);
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    const size = Math.max(img.w, img.h);
+    if (m.points.length < 3 || span < size / 80) return render();  // a click, not a mark
+    const [x0, y0] = m.points[0], [x1, y1] = m.points[m.points.length - 1];
+    m.closed = Math.hypot(x1 - x0, y1 - y0) < Math.max(span * 0.35, size / 25);  // the ends meet: a loop
+    img.marks.push(m);
+    render();
+    syncDraft();
+  };
+}
+
+// ---------------------------------------------------------------- result views
+
+async function resultHtml() {
+  const r = S.result, w = r.width, h = r.height;
+  const a = await imageUrl(r.id);
+  const src = (r.sources || [])[S.against] || (r.sources || [])[0];
+  const view = src ? S.view : "result";
+  if (view === "result") return frame(`<img src="${a}" alt="">`, w, h);
+  const b = await imageUrl(src.id), label = `Image ${(r.sources || []).indexOf(src) + 1}`;
+  if (!src.w) { const im = await loadImage(b); src.w = im.naturalWidth; src.h = im.naturalHeight; }
+  if (view === "side") {
+    return `<div class="side"><div class="cell">${frame(`<img src="${b}" alt=""><span class="tag">${label}</span>`, src.w, src.h)}</div>` +
+      `<div class="cell">${frame(`<img src="${a}" alt=""><span class="tag">Result</span>`, w, h)}</div></div>`;
+  }
+  if (view === "compare") {
+    return frame(`<div class="compare"><img src="${a}" alt=""><img class="over" src="${b}" alt=""><div class="handle"></div>` +
+      `<span class="tag">${label}</span><span class="tag right">Result</span></div>`, w, h);
+  }
+  const reshaped = Math.abs(src.w / src.h - w / h) > 0.02;
+  return frame(`<canvas data-a="${a.length}"></canvas><span class="tag">Red shows what changed${reshaped ? " · the images have different shapes" : ""}</span>`, w, h);
+}
+
+function bindStage() {
+  const stage = $("#stage");
+  if ($("#expand", stage)) $("#expand", stage).onclick = () => { S.compact = false; render(); };
+  const drop = $("#drop", stage);
+  if (drop) drop.onclick = () => $("#file").click();
+  const svg = $(".frame.drawing svg", stage);
+  if (svg) bindDrawing(svg, S.images[S.sel]);
+  const cmp = $(".compare", stage);
+  if (cmp) {
+    const over = $(".over", cmp), handle = $(".handle", cmp);
+    const set = p => { over.style.clipPath = `inset(0 ${100 - p * 100}% 0 0)`; handle.style.left = p * 100 + "%"; };
+    set(0.5);
+    cmp.onpointermove = e => { const r = cmp.getBoundingClientRect(); set(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))); };
+  }
+  const canvas = $(".frame canvas", stage);
+  if (canvas && S.result) {
+    const src = S.result.sources[S.against] || S.result.sources[0];
+    Promise.all([imageUrl(S.result.id), imageUrl(src.id)]).then(([a, b]) => drawDiff(a, b, canvas));
+  }
+}
+
+async function drawDiff(aUrl, bUrl, canvas) {
+  const [a, b] = await Promise.all([loadImage(aUrl), loadImage(bUrl)]);
+  const w = a.naturalWidth, h = a.naturalHeight;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  // The before image fitted into the result's frame, keeping its shape; where it doesn't reach stays grey.
+  const s = Math.min(w / b.naturalWidth, h / b.naturalHeight);
+  const bw = Math.round(b.naturalWidth * s), bh = Math.round(b.naturalHeight * s);
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(b, Math.floor((w - bw) / 2), Math.floor((h - bh) / 2), bw, bh);
+  const pb = ctx.getImageData(0, 0, w, h).data;
+  ctx.drawImage(a, 0, 0, w, h);
+  const out = ctx.getImageData(0, 0, w, h), pa = out.data;
+  for (let i = 0; i < pa.length; i += 4) {
+    const d = (Math.abs(pa[i] - pb[i]) + Math.abs(pa[i + 1] - pb[i + 1]) + Math.abs(pa[i + 2] - pb[i + 2])) / 3;
+    const g = (pa[i] * 0.3 + pa[i + 1] * 0.59 + pa[i + 2] * 0.11) * 0.4;
+    const heat = pb[i + 3] ? Math.min(1, Math.max(0, (d - 12) / 60)) : 0;
+    pa[i] = g + (255 - g) * heat; pa[i + 1] = g * (1 - heat * 0.8); pa[i + 2] = g * (1 - heat * 0.8); pa[i + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+// The server runs on this computer, so it saves the original (full size, PNG, with any transparency) into the
+// Downloads folder itself and shows it there. Not every app lets a widget download files.
+async function download() {
+  const btn = $("#download");
+  if (btn) btn.disabled = true;
+  try {
+    const out = await call("studio_download", { id: S.result.id });
+    showNote(`Saved to ${esc(out.path)}`);
+  } catch (e) {
+    showMsg(e.message);
+  }
+  if (btn) btn.disabled = false;
+}
+
+// ---------------------------------------------------------------- generating
+
+let poll = null;
+function startProgress(text) {
+  S.working = { text };
+  render();
+  clearInterval(poll);
+  poll = setInterval(async () => {
+    try {
+      const st = await call("studio_status");
+      if (st.busy) {
+        if ($("#pfill")) $("#pfill").style.width = st.pct + "%";
+        if ($("#ptext")) $("#ptext").textContent = st.message + (S.working?.text ? ` · ${S.working.text}` : "");
+      }
+    } catch {}
+  }, 800);
+}
+function stopProgress() { clearInterval(poll); poll = null; S.working = null; }
+
+// What the user put in here (or picked from the history) is kept on the server as a draft while they draw, so when they say in the chat what to
+// change, the model can see it (view_draft) and edit it. One draft per widget, updated until it's used.
+let draftId = "", saving = Promise.resolve(), saveTimer = null;
+function syncDraft() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const r = S.result, viewing = S.mode === "result" && r;
+    const images = viewing ? [{ id: r.id, w: r.width, h: r.height, marks: [] }] : imagesForServer();
+    saving = saving.then(async () => {
+      try {
+        const d = await call("studio_save_draft", { images, draft: draftId });
+        draftId = d.draft;
+        if (viewing) showNote("The AI knows you picked this one. Tell it in the chat what to change.");
+        else if (images.length) showNote("The AI can see what you put here. Tell it in the chat what to change.");
+        else hideNote();
+        if (d.draft) app.updateModelContext({ content: [{ type: "text", text: `The user marked up images in the Qwen Image Editor widget (draft ${d.draft}):\n${d.description}\nSee them with view_draft; edit with edit_image and that draft.` }] }).catch(() => {});
+      } catch (e) { showMsg(e.message); }
+    });
+  }, 400);
+}
+
+const imagesForServer = () => S.images.map(i => ({ id: i.id, w: i.w, h: i.h,
+  marks: i.marks.map(m => ({ color: m.color.name, closed: m.closed, points: m.points.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10]) })) }));
+
+// ---------------------------------------------------------------- history strip
+
+async function loadHistory() {
+  try { S.history = (await call("studio_history", { limit: 12 })).history || []; } catch { return; }
+  const box = $("#history");
+  box.innerHTML = S.history.length ? `<span class="label">Recent</span>` : "";
+  S.history.forEach(rec => {
+    const el = document.createElement("div");
+    el.className = "thumb";
+    el.title = rec.prompt;
+    el.innerHTML = `<img alt="">`;
+    imageUrl(rec.id, 160).then(u => { $("img", el).src = u; }).catch(() => {});
+    el.onclick = () => { showRecord(rec); syncDraft(); };
+    box.appendChild(el);
+  });
+}
+
+// ---------------------------------------------------------------- messages, input
+
+function showMsg(t) { $("#msg").textContent = t; $("#msg").hidden = false; }
+function hideMsg() { $("#msg").hidden = true; }
+function showNote(html) { $("#note").innerHTML = html; $("#note").hidden = false; }
+function hideNote() { $("#note").hidden = true; }
+
+$("#file").onchange = e => { addFiles([...e.target.files]); e.target.value = ""; };
+document.addEventListener("paste", e => {
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith("image/"));
+  if (files.length) { e.preventDefault(); addFiles(files); }
+});
+const stageEl = $("#stage");
+stageEl.addEventListener("dragover", e => { if (S.mode === "canvas") { e.preventDefault(); stageEl.classList.add("dragging"); } });
+stageEl.addEventListener("dragleave", () => stageEl.classList.remove("dragging"));
+stageEl.addEventListener("drop", e => {
+  stageEl.classList.remove("dragging");
+  if (S.mode !== "canvas") return;
+  e.preventDefault();
+  addFiles([...e.dataTransfer.files]);
+});
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (S.mode === "result" && S.view !== "result") { S.view = "result"; render(); }
+});
+
+// ---------------------------------------------------------------- host
+
+// ---------------------------------------------------------------- live panel
+
+// Open full screen or on the side, the widget follows the editor: it shows progress whenever an image is being made
+// (asked for in the chat, or in the browser editor) and then the new result, so one panel stays current.
+let liveTimer = null, liveBusy = false;
+function updateLive() {
+  const mode = (app.getHostContext() || {}).displayMode;
+  const live = mode === "fullscreen" || mode === "pip";
+  if (live && !liveTimer) { liveTimer = setInterval(liveTick, 1500); liveTick(); S.compact = false; }
+  else if (!live && liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+}
+async function liveTick() {
+  let st;
+  try { st = await call("studio_status", { panel: true }); } catch { return; }
+  if (st.busy && !liveBusy) {
+    liveBusy = true;
+    if (!S.working) startProgress("");
+  } else if (!st.busy && liveBusy) {
+    liveBusy = false;
+    stopProgress();
+    await loadHistory();
+    const rec = S.history[0];
+    if (rec && rec.id !== S.result?.id) {
+      if (S.mode === "canvas" && S.images.some(i => i.marks.length)) {
+        showNote(`A new image is ready. <button class="btn" id="showNew">Show it</button>`);  // don't throw away marks
+        $("#showNew").onclick = () => { hideNote(); showRecord(rec); };
+      } else showRecord(rec);
+    }
+    render();
+  }
+}
+// Apps whose full screen puts the widget in a panel beside the chat (ChatGPT's desktop app): there the widget opens as
+// that panel by itself, unless one is open already. Elsewhere it stays in the chat, with full screen as a button.
+const PANEL_MODES = { chatgpt: "fullscreen" };
+function openAsPanel() {
+  const host = ((app.getHostVersion?.() || {}).name || "").toLowerCase(), ctx = app.getHostContext() || {};
+  const mode = PANEL_MODES[host];
+  if (!mode || liveTimer || !(ctx.availableDisplayModes || []).includes(mode)) return;
+  app.requestDisplayMode({ mode }).then(r => report(`opened as a panel (${mode}): ${JSON.stringify(r)}`)).catch(() => {});
+}
+
+let mySeq = 0, watchTimer = null, watching = false;
+async function watchProgress() {
+  try { mySeq = (await call("studio_hello")).seq; } catch { return; }
+  watchTimer = setInterval(async () => {
+    if (liveTimer) return;  // a panel follows everything itself
+    let st;
+    try { st = await call("studio_status", { widget: mySeq }); } catch { return; }
+    if (!st.latest) {  // a newer widget has opened: it shows progress from now on
+      clearInterval(watchTimer);
+      if (watching) { watching = false; stopProgress(); render(); }
+    } else if (st.busy && !S.working && !st.panel) {  // an open panel shows the progress already
+      watching = true;
+      startProgress("");
+    } else if (!st.busy && watching) {
+      watching = false;
+      stopProgress();
+      render();
+      loadHistory();
+    }
+  }, 1500);
+}
+
+function showRecord(rec) {
+  S.result = rec; S.compact = false; S.mode = "result"; S.view = "result"; S.against = Math.max(0, (rec.sources || []).length - 1);
+  render();
+}
+
+function applyContext(ctx) {
+  if (!ctx) return;
+  if (ctx.theme) applyDocumentTheme(ctx.theme);
+  if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
+  if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
+  document.documentElement.classList.toggle("full", ctx.displayMode === "fullscreen");
+  updateLive();
+}
+app.onhostcontextchanged = ctx => { applyContext(app.getHostContext() || ctx); render(); };
+
+// The model's tool call: its arguments first (show that it's working), then the result.
+// Some apps send the arguments late or not at all, so a generating tool's widget starts working as soon as it connects.
+const GENERATING = ["generate_image", "edit_image"];
+let ownDone = false;  // this widget's own tool call has finished
+app.ontoolinput = ({ arguments: args = {} }) => {
+  if (ownDone) return;
+  const text = args.prompt || args.instruction;
+  if (text && S.mode === "waiting") startProgress(text);
+};
+app.ontoolresult = params => {
+  if (ownDone) return;
+  ownDone = true;
+  stopProgress();
+  const sc = params.structuredContent || {};
+  if (params.isError) {
+    const text = (params.content || []).map(c => c.text).filter(Boolean).join(" ") || "Something went wrong.";
+    // edit_image stops once so the model looks at the user's marks or picked image first; that's not a failure.
+    if (text.includes("view_draft")) { S.mode = "waiting"; S.waitText = "The AI is checking what you marked or picked first. The result appears below."; }
+    else if (S.mode === "waiting") S.waitText = text;
+    else showMsg(text);
+  } else if (sc.view === "result" && sc.result) {
+    S.compact = !!sc.panel && !liveTimer;  // a panel shows it already (unless this widget is the panel)
+    S.result = sc.result; S.mode = "result"; S.view = "result"; S.against = Math.max(0, sc.result.sources.length - 1);
+    if (!sc.panel) openAsPanel();
+  } else if (sc.view === "canvas") {
+    S.images = (sc.images || []).map(i => ({ ...i, marks: [] }));
+    S.sel = 0; S.mode = "canvas";
+    if (S.images.length) syncDraft();
+    if (!sc.panel) openAsPanel();
+  }
+  render();
+  loadHistory();
+};
+app.ontoolcancelled = () => { if (ownDone) return; ownDone = true; stopProgress(); if (S.mode === "waiting") S.waitText = "Cancelled."; render(); };
+
+app.connect().then(() => {
+  applyContext(app.getHostContext());
+  const ctx = app.getHostContext() || {};
+  report(`connected to ${JSON.stringify(app.getHostVersion?.() || {})}, mode ${ctx.displayMode}, modes ${JSON.stringify(ctx.availableDisplayModes)}, ` +
+    `platform ${ctx.platform}, tool ${ctx.toolInfo?.tool?.name}, caps ${JSON.stringify(app.getHostCapabilities() || {})}`);
+  watchProgress();
+  if (S.mode === "waiting" && !S.working && !S.waitText) {
+    if (GENERATING.includes(ctx.toolInfo?.tool?.name)) startProgress("");
+    else S.mode = "canvas";  // open_editor, or an app that doesn't say which tool
+  }
+  render();
+}).catch(e => showMsg("Couldn't connect to the chat app: " + e.message));
+render();
+</script>
+</body>
+</html>

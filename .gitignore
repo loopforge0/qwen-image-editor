@@ -1,0 +1,15 @@
+# Local environment
+.venv/
+__pycache__/
+*.pyc
+
+# Generated images, benchmark results and editor history (may contain personal images)
+outputs/
+
+# Tool scratch
+.playwright-mcp/
+
+# Installer builds
+installer/windows/build/
+installer/macos/build/
+dist/
